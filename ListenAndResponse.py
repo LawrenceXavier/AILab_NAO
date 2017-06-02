@@ -12,66 +12,44 @@ from naoqi import ALProxy
 def poseInit(robotIP, PORT=9559):
 	motionProxy  = ALProxy("ALMotion", robotIP, PORT)
 	postureProxy = ALProxy("ALRobotPosture", robotIP, PORT)
-
-	# Wake up robot
 	motionProxy.wakeUp()
-
-	# Send robot to Stand Init
 	postureProxy.goToPosture("StandInit", 0.5)
 
 
 def rbRest(robotIP, PORT=9559):
-	# Go to rest position
 	motionProxy  = ALProxy("ALMotion", robotIP, PORT)
 	motionProxy.post.rest()
 
-def moveTo(robotIP, PORT=9559):
-
+def goToward(robotIP, PORT=9559):
 	motionProxy  = ALProxy("ALMotion", robotIP, PORT)
 	postureProxy = ALProxy("ALRobotPosture", robotIP, PORT)
-
-	# Wake up robot
 	motionProxy.wakeUp()
-
-	# Send robot to Stand Init
 	postureProxy.goToPosture("StandInit", 0.5)
+	x = 1.0
+	y = 0.0
+	theta = 0.0
+	frequency = 0.5
+	motionProxy.moveToward(x, y, theta, [["Frequency", frequency]])
+	time.sleep(3)
+	motionProxy.stopMove()
 
-	#####################
-	## Enable arms control by move algorithm
-	#####################
-	motionProxy.setMoveArmsEnabled(True, True)
-	#~ motionProxy.setMoveArmsEnabled(False, False)
+def goBackward(robotIP, PORT=9559):	
+	motionProxy  = ALProxy("ALMotion", robotIP, PORT)
+	postureProxy = ALProxy("ALRobotPosture", robotIP, PORT)
+	motionProxy.wakeUp()
+	postureProxy.goToPosture("StandInit", 0.5)
+	x = -1.0
+	y = 0.0
+	theta = 0.0
+	frequency = 0.5
+	motionProxy.moveToward(x, y, theta, [["Frequency", frequency]])
+	time.sleep(3)
+	motionProxy.stopMove()
 
-	#####################
-	## FOOT CONTACT PROTECTION
-	#####################
-	#~ motionProxy.setMotionConfig([["ENABLE_FOOT_CONTACT_PROTECTION",False]])
-	motionProxy.setMotionConfig([["ENABLE_FOOT_CONTACT_PROTECTION", True]])
-
-	#####################
-	## get robot position before move
-	#####################
-	initRobotPosition = m.Pose2D(motionProxy.getRobotPosition(False))
-
-	X = 0.3
-	Y = 0.0
-	Theta = math.pi/2.0
-	motionProxy.post.moveTo(X, Y, Theta)
-	# wait is useful because with post moveTo is not blocking function
-	motionProxy.waitUntilMoveIsFinished()
-
-	#####################
-	## get robot position after move
-	#####################
-	endRobotPosition = m.Pose2D(motionProxy.getRobotPosition(False))
-
-	#####################
-	## compute and print the robot motion
-	#####################
-	robotMove = m.pose2DInverse(initRobotPosition)*endRobotPosition
-	# return an angle between ]-PI, PI]
-	robotMove.theta = m.modulo2PI(robotMove.theta)
-#	print "Robot Move:", robotMove
+def singLonely(robotIP, PORT=9559):
+	print "Run here"
+	aup = ALProxy("ALAudioPlayer", robotIP, PORT)
+	aup.playFile("/home/nao/Akon - Lonely - Lyrics.wav")
 
 def changeCl(naoIP, naoPORT, onOrOff):
 	led = ALProxy("ALLeds", naoIP, naoPORT)
@@ -82,16 +60,47 @@ def changeCl(naoIP, naoPORT, onOrOff):
 
 def searchForCommand(s, responseModule, naoIP, naoPORT):
 	t = s.split()
-	for x in t:
-		if (x.find('stop') != -1):
-			responseModule.say('Good bye')
+	n = len(t)
+	i = 0
+	no_loop = -1
+	while (i < n):
+		last_i = i
+		if (no_loop != -1):
+			no_loop += 1
+		if (t[i].find("stop") != -1):
+			responseModule.say("Good bye")
 			return True
-		elif (x.find('wake') != -1):
+		elif (t[i].find("wake" != -1):
 			poseInit(naoIP, naoPORT)
-		elif (x.find('go') != -1):
-			moveTo(naoIP, naoPORT)
-		elif (x.find('rest') != -1):
+			i += 1
+		elif (t[i].find("go") != -1):
+			if (i+1 < n):
+				if (t[i+1] == "backward" or t[i+1] == "back"):
+					goBackward(naoIP, naoPORT)
+					i += 1
+				else:
+					goToward(naoIP, naoPORT)
+					if (t[i+1] == "forward" or t[i+1] == "toward" or t[i+1] == "ahead"):
+						i += 1
+			else:
+				goToward(naoIP, naoPORT)
+			i += 1
+		elif (t[i].find("sing") != -1):
+			singLonely(naoIP, naoPORT)
+			i += 1
+		elif (t[i].find("rest") != -1):
 			rbRest(naoIP, naoPORT)
+			i += 1
+		elif (t[i].find("keep") != -1):
+			no_loop = 0
+			i += 1
+		else:
+			i += 1
+		if (no_loop >= 1 and no_loop <= 3):
+			i = last_i
+		elif (no_loop > 3):
+			responseModule.say("I am fed up with doing this!")
+			no_loop = -1
 	return False
 
 def main(naoIP, naoPORT):
@@ -122,9 +131,9 @@ def main(naoIP, naoPORT):
 
 		try:
 			inp = str(r.recognize_google(audio))
-
+			print "Listened: ", inp
 			if (inp.find('name') != -1):
-				res = responseModule.say('My name is NAO')
+				responseModule.say('My name is NAO')
 				continue
 
 			# Search for command (if exist); if 'stop' found, then stop
@@ -132,7 +141,11 @@ def main(naoIP, naoPORT):
 				break
 
 			# Get response
-			res = cb.say(inp)
+			try:
+				res = cb.say(inp)
+			except ValueError:
+				res = "I hate you!"
+			print "Response: ", res
 
 			# Speak it loud
 			responseModule.say(str(res))
@@ -142,8 +155,11 @@ def main(naoIP, naoPORT):
 			nb_error += 1
 			if (nb_error >= 5):
 				responseModule.say("Hello? Are you still there?")
+				nb_error = 0
+			elif (nb_error >= 3):
+				responseModule.say("Hello?")
 		except sr.RequestError as e:
 			print("Could not request results from Google Speech Recognition service; {0}".format(e))
 
 if (__name__ == '__main__'):
-	main('192.168.1.12', 9559)
+	main('192.168.1.18', 9559)
