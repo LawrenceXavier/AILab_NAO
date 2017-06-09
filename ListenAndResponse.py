@@ -47,9 +47,40 @@ def goBackward(robotIP, PORT=9559):
 	motionProxy.stopMove()
 
 def singLonely(robotIP, PORT=9559):
-	print "Run here"
 	aup = ALProxy("ALAudioPlayer", robotIP, PORT)
-	aup.playFile("/home/nao/Akon - Lonely - Lyrics.wav")
+	aup.playFile("/home/nao/Akon - Lonely - Lyrics.wav", 0.3, 0.0)
+	time.sleep(8.0)
+	aup.stopAll()
+
+def meetPeople(robotIP, PORT, sbName, responseModule):
+	if (not sbName):
+		return
+	fdProxy = ALProxy("ALFaceDetection", robotIP, PORT)
+	memProxy = ALProxy("ALMemory", robotIP, PORT)
+	
+	fdProxy.setRecognitionEnabled(True)
+	fdProxy.subscribe("Meet_new_friend", 500, 0.0)
+	time.sleep(0.5)
+	val = memProxy.getData("FaceDetected")
+	if (val and isinstance(val, list) and len(val) >= 2):
+		timeStamp = val[0]
+		faceInfoArray = val[1]
+		try:
+			faceInfo = faceInfoArray[0]	# Just recognize the first face
+			faceShapeInfo = faceInfo[0]
+			faceExtraInfo = faceInfo[1]
+			if (not (faceExtraInfo and faceExtraInfo[2])):
+				responseModule.say("Please keep this for five seconds!")
+				faceProxy.learnFace(sbName)
+				responseModule.say("Now I've remembered you, "+sbName)
+			else:
+				responseModule.say("Hello, "+faceExtraInfo[2])
+		except Exception, e:
+			print "Error: "
+			print str(e)
+			return 1
+	fdProxy.unsubscribe("Meet_new_friend")
+	return 0
 
 def changeCl(naoIP, naoPORT, onOrOff):
 	led = ALProxy("ALLeds", naoIP, naoPORT)
@@ -58,7 +89,10 @@ def changeCl(naoIP, naoPORT, onOrOff):
 	else:		# off
 		led.setIntensity("FaceLeds", 0.0)
 
-def searchForCommand(s, responseModule, naoIP, naoPORT):
+def searchForCommand(s, responseModule, naoIP, naoPORT, lastResponse = "Hello!"):	# return 0: nothing ; 1: break ; 2: continue
+	if (s.find("name") != -1):
+		responseModule.say("My name is NAO!")
+		return 2
 	t = s.split()
 	n = len(t)
 	i = 0
@@ -67,13 +101,25 @@ def searchForCommand(s, responseModule, naoIP, naoPORT):
 		last_i = i
 		if (no_loop != -1):
 			no_loop += 1
-		if (t[i].find("stop") != -1):
-			responseModule.say("Good bye")
-			return True
-		elif (t[i].find("wake" != -1):
+		if (t[i] == "stop" or t[i] == "stopped" or t[i] == "stopping"):
+			responseModule.say("Good bye!")
+			return 1
+		elif (t[i] == "say" or t[i] == "said" or t[i] == "saying"):	
+			k = " ".join(t[j] for j in range(i+1, n))
+			responseModule.say(k)
+			return 2
+		elif (t[i] == "repeat" or t[i] == "repeating" or t[i] == "repeated"):
+			responseModule.say(lastResponse)
+			return 2
+		elif (t[i] == "meet" or t[i] == "met"):
+			k = " ".join(t[j] for j in range(i+1, n))
+			if (meetPeople(naoIP, naoPORT, k, responseModule) == 1):
+				return 2
+			return 0
+		elif (t[i] == "wake" or t[i] == "waking"):
 			poseInit(naoIP, naoPORT)
 			i += 1
-		elif (t[i].find("go") != -1):
+		elif (t[i] == "go" or t[i] == "going"):
 			if (i+1 < n):
 				if (t[i+1] == "backward" or t[i+1] == "back"):
 					goBackward(naoIP, naoPORT)
@@ -85,13 +131,15 @@ def searchForCommand(s, responseModule, naoIP, naoPORT):
 			else:
 				goToward(naoIP, naoPORT)
 			i += 1
-		elif (t[i].find("sing") != -1):
+		elif (t[i] == "sing" or t[i] == "singing"):
 			singLonely(naoIP, naoPORT)
 			i += 1
-		elif (t[i].find("rest") != -1):
+			return 2
+
+		elif (t[i] == "rest" or t[i] == "resting"):
 			rbRest(naoIP, naoPORT)
 			i += 1
-		elif (t[i].find("keep") != -1):
+		elif (t[i] == "keep" or t[i] == "keeping"):
 			no_loop = 0
 			i += 1
 		else:
@@ -99,18 +147,19 @@ def searchForCommand(s, responseModule, naoIP, naoPORT):
 		if (no_loop >= 1 and no_loop <= 3):
 			i = last_i
 		elif (no_loop > 3):
-			responseModule.say("I am fed up with doing this!")
+			responseModule.say("I am fed up with this!")
 			no_loop = -1
-	return False
+	return 0
 
 def main(naoIP, naoPORT):
 	recordModule = ALProxy("ALAudioRecorder", naoIP, naoPORT)
-	responseModule = ALProxy('ALTextToSpeech', naoIP, naoPORT)
+	responseModule = ALProxy("ALTextToSpeech", naoIP, naoPORT)
 	recordModule.stopMicrophonesRecording()
 	r = sr.Recognizer()
 	cb = CleverWrap('CCCloFrKCqTEYteVgk-C70rlxLQ')
-	responseModule.say('Hello')
+	responseModule.say("Hello!")
 	nb_error = 0
+	last_response = "Hello!"
 	while (True):	
 		# Start recording 		
 		print 'Star recording'	
@@ -128,7 +177,6 @@ def main(naoIP, naoPORT):
 		# Speech To Text
 		with sr.AudioFile('record.wav') as source:
 			audio = r.record(source)
-
 		try:
 			inp = str(r.recognize_google(audio))
 			print "Listened: ", inp
@@ -137,8 +185,11 @@ def main(naoIP, naoPORT):
 				continue
 
 			# Search for command (if exist); if 'stop' found, then stop
-			if (searchForCommand(inp, responseModule, naoIP, naoPORT)):
+			c = searchForCommand(inp, responseModule, naoIP, naoPORT, last_response)
+			if (c == 1):
 				break
+			elif (c == 2):
+				continue
 
 			# Get response
 			try:
@@ -149,6 +200,7 @@ def main(naoIP, naoPORT):
 
 			# Speak it loud
 			responseModule.say(str(res))
+			last_response = str(res)
 			nb_error = 0
 		except sr.UnknownValueError:
 			print("Google Speech Recognition could not understand audio")
@@ -162,4 +214,4 @@ def main(naoIP, naoPORT):
 			print("Could not request results from Google Speech Recognition service; {0}".format(e))
 
 if (__name__ == '__main__'):
-	main('192.168.1.18', 9559)
+	main('192.168.1.24', 9559)
