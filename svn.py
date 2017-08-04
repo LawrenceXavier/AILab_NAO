@@ -1,9 +1,11 @@
 from gtts import gTTS
 from translation import bing
+from gtts import gTTS
 
-def speakVN(res):	
-	print res
-	vnres = bing(res, dst="vi")
-	print vnres.encode("utf8")
-	tts = gTTS(text=vnres.encode('utf8'), lang="vi", slow=False)
-	tts.save("res.mp3")
+def translateToVN(res):
+	return bing(res, dst="vi")
+
+def speakVN(res, filename="res.mp3"):
+	print "Text To Speech:", res
+	tts = gTTS(res, lang="vi", slow=False)
+	tts.save(filename)

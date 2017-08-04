@@ -38,12 +38,6 @@ class ListenModule(ALModule):
 		os.system("python afterListening.py")
 		os.environ["PATH"] = naoPATH
 		
-		f = open("nextpart.txt", "r")
-		r = int(f.readline())
-		f.close()
-		if (r == 1):
-			sys.exit(0)
-		
 		memory.subscribeToEvent("SoundDetected", "listenmodule", "recordText")
 
 def main():	

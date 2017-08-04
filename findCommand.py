@@ -1,23 +1,69 @@
 import sys
+import os
 from naoqi import ALProxy
 import Actions
 import urllib2
 import json
+#import getResponse
+#import sen
 
 url = "http://naofunctions.cloudhub.io/findLesson?query="
+urlAll = "http://naofunctions.cloudhub.io/getAllLesson"
 
-def searchForCommandUpdate(naoIP, naoPORT, command):
-	if (not command):
-		return 1
-	command = command.replace(" ", "%20")
-	print "url =", url+command
-	urlFile = urllib2.urlopen(url+command)
+def urlQuery(cmd):
+	if (not cmd):
+		return None
+	urlFile = urllib2.urlopen(urlAll)
 	jsonList = json.load(urlFile)
+	if (not jsonList):
+		return None 
+	for item in jsonList:
+		s = item["descLesson"]
+		s = s.encode("utf8")
+		print s
+		print cmd
+		if (s.find(cmd) != -1):
+			return item
+	return None
+
+def searchForWordUpdate(naoIP, naoPORT, cmd):
+	if (not cmd):
+		return -1
 	
-	element = jsonList[0]
+	# command = cmd.replace(" ", "%20") # replace " " with "%20" to concaten to query url
+	# print "url =", url+command
+	# urlFile = urllib2.urlopen(url+command)
+	# jsonList = json.load(urlFile)
+	# if (not jsonList):
+		# return -1
+	# element = jsonList[0]
+	element = urlQuery(cmd)
+	if (not element):
+		return -1
 	func = getattr(Actions, element["doFunction"])
+	
+	# res = getResponse.getAnswer(cmd)
+	# sen.speakOut(naoIP, naoPORT, res) # Response in English
+	os.system("python say.py \""+naoIP+"\" \""+str(naoPORT)+"\" \""+element["doFunction"]+".mp3\"")
 	func(naoIP, naoPORT)
 	return 0
+
+def searchForCommandUpdate(naoIP, naoPORT, utt):
+	nothingFound = True
+	s = utt.split()
+	n = len(s)
+	i = 0
+	while (i < n):
+		if (i+1 < n):
+			if (searchForWordUpdate(naoIP, naoPORT, s[i]+" "+s[i+1]) == 0):	
+				# found action and no error occur
+				i += 1
+				nothingFound = False
+		else:
+			if (searchForWordUpdate(naoIP, naoPORT, s[i]) == 0):
+				nothingFound = False
+		i += 1
+	return (0 if (nothingFound == False) else 1)
 
 def searchForCommand(s, naoIP, naoPORT, lastResponse = "Hello!"):
 	"""return 0: nothing ; 1: break ; 2: continue"""
